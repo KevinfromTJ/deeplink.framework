@@ -168,7 +168,17 @@ class AtenToAscendTransformer(SingleOpTransformer):
             y = self.get_param_proxy(y, const_dtype, y_shape)
             if x_dtype == torch.float16:
                 y = self.get_proxy(ascend_op.Cast, (y, "FLOAT16"))
+            y = self.get_param_proxy(y, x_dtype, list(x.node.meta["val"].shape))
         return x, y
+
+    def shape_prod(self, shape):
+        prod = 1
+        for e in shape:
+            if isinstance(e, torch.SymInt):
+                prod *= e.node.hint
+            else:
+                prod *= e
+        return prod
 
     @register_conversion(torch.ops.aten.mul)
     def mul(self, x, y):
@@ -459,8 +469,22 @@ class AtenToAscendTransformer(SingleOpTransformer):
 
     @register_conversion([aten.lt.Scalar, aten.lt.Tensor])
     def lt(self, x, y):
+        y_shape = [1]
+        if isinstance(y, torch.fx.proxy.Proxy):
+            y_shape = list(y.node.meta['val'].shape)
+        x_shape = list(x.node.meta['val'].shape)
+        out = list(fx_traceback.get_current_meta()['val'].shape)
+        out_shape = self.get_shape_proxy(out)
+        # import pdb;pdb.set_trace()
         x, y = self.binary_cmp_cast_input(x, y)
+
+        if self.shape_prod(x_shape) < self.shape_prod(out):
+            x = self.get_proxy(ascend_op.BroadcastTo, (x, out_shape))
+        if self.shape_prod(y_shape) < self.shape_prod(out):
+            y = self.get_proxy(ascend_op.BroadcastTo, (y, out_shape))
         return self.get_proxy(ascend_op.Less, (x, y))
+        # x, y = self.binary_cmp_cast_input(x, y)
+        # return self.get_proxy(ascend_op.Less, (x, y))
 
     @register_conversion(aten.masked_fill.Scalar)
     def masked_fill(self, x, mask, value):
