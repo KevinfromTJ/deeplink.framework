@@ -154,6 +154,28 @@ class BatchMatMul(Operator):
 class LayerNorm(Operator):
     def __init__(self):
         super().__init__("LayerNorm")
+        
+    def infer_result(self, x, begin_dim, weight, bias, eps):
+        import pdb;pdb.set_trace()
+        attr = acl.op.create_attr()
+        func_name_lst = ["acl.op.set_attr_int", "acl.op.set_attr_int", "acl.op.set_attr_float"]
+        acl_attr_name_lst = ["begin_norm_axis", "begin_params_axis", "epsilon"]
+        acl_attr_lst = [begin_dim, begin_dim, eps]     
+        check_ret_list(func_name_lst, attr, acl_attr_name_lst, acl_attr_lst)
+        
+        x, x_shape, _, x_dtype = get_fake_tensor_meta_val(x)
+        w, w_shape, _, w_dtype = get_fake_tensor_meta_val(weight)
+        b, b_shape, _, b_dtype = get_fake_tensor_meta_val(bias)  
+        input_lst = [x, w, b]
+        input_shape_lst = [x_shape, w_shape, b_shape]
+        input_dtype_lst = [x_dtype, w_dtype, b_dtype ]
+        in_desc_list = creat_in_desc_list(input_dtype_lst, input_shape_lst, input_lst)    
+        in_list, out_desc_list = creat_n_in_outdesc_list(len(input_lst))
+        
+        return acl_infer_check_2_faketensor(self.name(), input_lst, in_desc_list, in_list, len(input_lst), out_desc_list, attr)
+        # return torch.empty(
+        #     out_shape, dtype=out_dtype, memory_format=get_memory_format(x1)
+        # )
 
 
 class GroupNorm(Operator):

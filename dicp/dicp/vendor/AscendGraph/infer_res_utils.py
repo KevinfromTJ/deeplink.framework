@@ -1,7 +1,14 @@
 from collections.abc import Sequence
 from typing import Optional, Tuple, Union, List
 from dicp.dynamo_bridge.utils import get_memory_format
-
+from dicp.vendor.AscendGraph.codegen.utils import (
+    check_ret,
+    get_acl_format,
+    get_acl_dtype,
+    get_shape_from_desc,
+    get_torch_dtype
+)
+import acl
 import torch
 import math
 
@@ -242,3 +249,33 @@ def reduce_op_infer(x, dims, keepdim) -> torch.tensor:
 
 def close2(num, tar=0, rtol=0.00001):
     return math.fabs(num - tar) < rtol
+
+
+"""acl py infer func encapsulation"""
+def check_ret_list(func_name_lst, attr, acl_attr_name_lst, acl_attr_lst):
+    assert isinstance(func_name_lst, list) and isinstance(acl_attr_name_lst, list) and isinstance(acl_attr_lst, list)
+    for _, (func_name, acl_attr_name, acl_attr) in enumerate(zip(func_name_lst, acl_attr_name_lst, acl_attr_lst)):
+        f = getattr(acl.op,func_name.split(".")[-1])
+        check_ret(func_name, f(attr, acl_attr_name, acl_attr))
+        
+def creat_in_desc_list(input_dtype_lst, input_shape_lst, input_lst):
+    in_desc_list = []
+    for _, (input_dtype, input_shape, input) in enumerate(zip(input_dtype_lst, input_shape_lst, input_lst)):
+        in_desc_list.append(acl.create_tensor_desc(get_acl_dtype(input_dtype), list(input_shape), get_acl_format(input)))
+    return in_desc_list
+
+def creat_n_in_outdesc_list(numel):
+    in_list, out_desc_list = [], []
+    for _ in range(numel):
+        in_list.append(acl.create_data_buffer(id(0), acl.data_type_size(0)))
+        out_desc_list.append(acl.create_tensor_desc(-1, [0], -1))
+    return in_list, out_desc_list
+
+def acl_infer_check_2_faketensor(op_name, input_lst, in_desc_list, in_list, numel, out_desc_list, attr):
+    check_ret("acl.op.infer_shape", acl.op.infer_shape(op_name, in_desc_list, in_list, numel, out_desc_list, attr))
+    out_shape_list = [get_shape_from_desc(out_desc_list[i]) for i in range(numel)]
+    out_dtype_list = [get_torch_dtype(acl.get_tensor_desc_type(out_desc_list[i])) for i in range(numel)]
+    memory_format_list = [get_memory_format(i) for i in input_lst]
+    return [torch.empty(o_shape,dtype=o_dtype,memory_format=o_mem_fmat) for _,(o_shape,o_dtype,o_mem_fmat) in enumerate(zip(out_shape_list,out_dtype_list,memory_format_list))]
+
+    

@@ -1394,7 +1394,7 @@ class AtenToAscendTransformer(SingleOpTransformer):
         prob_op = self.get_const_proxy(float(p), dtype)
         return self.get_proxy(ascend_op.DropOutDoMaskV3, (grad_output, mask, prob_op))
     
-    @register_conversion([torch.ops.aten._adaptive_avg_pool2d.default])
+    @register_conversion([torch.ops.aten._adaptive_avg_pool2d,torch.ops.aten._adaptive_avg_pool2d.default])
     def adaptiveavgpool2d(self, x, output_size):
         assert isinstance(output_size, int) or ( len(output_size) in range(1,3) and any(output_size) )
         if not isinstance(output_size, list):
